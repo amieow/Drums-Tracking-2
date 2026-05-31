@@ -15,7 +15,7 @@
  * Validates: Requirements 15.1–15.5
  */
 
-import { getSupabaseClient } from "@/lib/supabase";
+import { getDb } from "@/lib/db";
 import QRCode from "qrcode";
 
 interface RouteParams {
@@ -29,31 +29,12 @@ export async function GET(
   const { lot_id } = await params;
 
   // Verify the lot_id exists in the items table (Requirement 15.5)
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("items")
-    .select("lot_id")
-    .eq("lot_id", lot_id)
-    .maybeSingle();
+  const sql = getDb();
+  const rows = await sql<
+    { lot_id: string }[]
+  >`SELECT lot_id FROM items WHERE lot_id = ${lot_id} LIMIT 1`;
 
-  if (error) {
-    return Response.json(
-      {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to query database.",
-        },
-        meta: {
-          timestamp: new Date().toISOString(),
-          request_id: crypto.randomUUID(),
-        },
-      },
-      { status: 500 },
-    );
-  }
-
-  if (!data) {
+  if (rows.length === 0) {
     return Response.json(
       {
         success: false,

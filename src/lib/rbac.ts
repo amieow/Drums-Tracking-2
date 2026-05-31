@@ -8,7 +8,7 @@
  * entries as required by Requirement 2.5.
  */
 
-import { getSupabaseClient } from "@/lib/supabase";
+import { getDb } from "@/lib/db";
 import type { UserRole } from "@/types";
 
 // ─── Action Constants ─────────────────────────────────────────────────────────
@@ -143,23 +143,11 @@ export async function writeForbiddenAttempt(params: {
   const { userId, userEmail, action, ip } = params;
 
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from("audit_logs").insert({
-      item_id: null,
-      action: "forbidden_attempt",
-      previous_state: null,
-      new_state: JSON.stringify({ action }),
-      user_id: userId,
-      user_email: userEmail,
-      ip_address: ip,
-      timestamp: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error(
-        `[rbac] Failed to write forbidden_attempt audit entry: ${error.message}`,
-      );
-    }
+    const sql = getDb();
+    await sql`
+      INSERT INTO audit_logs (item_id, action, previous_state, new_state, user_id, user_email, ip_address, timestamp)
+      VALUES (NULL, 'forbidden_attempt', NULL, ${JSON.stringify({ action })}, ${userId}::uuid, ${userEmail}, ${ip}, ${new Date().toISOString()})
+    `;
   } catch (err) {
     console.error(`[rbac] Unexpected error writing forbidden_attempt:`, err);
   }

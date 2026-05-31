@@ -13,8 +13,8 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
+import { getDb } from "@/lib/db";
 import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
-import { getSupabaseClient } from "@/lib/supabase";
 import { updateItemLocation } from "@/services/item-service";
 import type { AuditEntry, Item, ItemHistoryEntry, UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
@@ -65,69 +65,48 @@ export async function GET(
 
   // ── 4. Fetch item by UUID ──────────────────────────────────────────────────
   try {
-    const supabase = getSupabaseClient();
+    const sql = getDb();
 
-    const { data: item, error: itemError } = await supabase
-      .from("items")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const itemRows = await sql<
+      Item[]
+    >`SELECT * FROM items WHERE id = ${id}::uuid LIMIT 1`;
 
-    if (itemError || !item) {
+    if (itemRows.length === 0) {
       return NextResponse.json(
         errorResponse("NOT_FOUND", `Item with id "${id}" was not found.`),
         { status: getHttpStatus("NOT_FOUND") },
       );
     }
 
-    // ── 5. Fetch audit history for this item ───────────────────────────────
-    const { data: auditLogs, error: auditError } = await supabase
-      .from("audit_logs")
-      .select(
-        "action, previous_state, new_state, user_id, user_email, timestamp",
-      )
-      .eq("item_id", id)
-      .order("timestamp", { ascending: false });
+    const item = itemRows[0];
 
-    if (auditError) {
-      console.error(
-        `[GET /api/items/${id}] Audit query error:`,
-        auditError.message,
-      );
-      return NextResponse.json(
-        errorResponse("INTERNAL_ERROR", "An unexpected error occurred."),
-        { status: getHttpStatus("INTERNAL_ERROR") },
-      );
-    }
+    // ── 5. Fetch audit history for this item ───────────────────────────────
+    const auditRows = await sql<
+      {
+        action: string;
+        previous_state: string | null;
+        new_state: string;
+        user_id: string;
+        user_email: string;
+        timestamp: string;
+      }[]
+    >`
+      SELECT action, previous_state, new_state, user_id, user_email, timestamp
+      FROM audit_logs WHERE item_id = ${id}::uuid ORDER BY timestamp DESC
+    `;
 
     // ── 6. Map audit_logs rows to ItemHistoryEntry[] ───────────────────────
-    const history: ItemHistoryEntry[] = (auditLogs ?? []).map(
-      (
-        log: Pick<
-          AuditEntry,
-          | "action"
-          | "previous_state"
-          | "new_state"
-          | "user_id"
-          | "user_email"
-          | "timestamp"
-        >,
-      ) => ({
-        action: log.action,
-        previous_state: log.previous_state ?? null,
-        new_state: log.new_state ?? "",
-        user_id: log.user_id,
-        user_email: log.user_email,
-        timestamp: log.timestamp,
-      }),
-    );
+    const history: ItemHistoryEntry[] = auditRows.map((log) => ({
+      action: log.action as AuditEntry["action"],
+      previous_state: log.previous_state ?? null,
+      new_state: log.new_state ?? "",
+      user_id: log.user_id,
+      user_email: log.user_email,
+      timestamp: log.timestamp,
+    }));
 
     // ── 7. Return item with history ────────────────────────────────────────
-    const itemWithHistory: Item = {
-      ...(item as Item),
-      history,
-    };
-
+    const itemWithHistory: Item = { ...item, history };
     return NextResponse.json(successResponse(itemWithHistory), { status: 200 });
   } catch (err) {
     console.error(`[GET /api/items/${id}] Unexpected error:`, err);
@@ -214,24 +193,21 @@ export async function PATCH(
 
   const locationZone = input.location_zone.trim();
 
-  // ── 5. Resolve route param and look up item by UUID ────────────────────────
   const { id } = await params;
 
-  const supabase = getSupabaseClient();
-  const { data: itemData, error: fetchError } = await supabase
-    .from("items")
-    .select("lot_id")
-    .eq("id", id)
-    .single();
+  const sql = getDb();
+  const itemRows = await sql<
+    { lot_id: string }[]
+  >`SELECT lot_id FROM items WHERE id = ${id}::uuid LIMIT 1`;
 
-  if (fetchError || !itemData) {
+  if (itemRows.length === 0) {
     return NextResponse.json(
       errorResponse("NOT_FOUND", `Item with id "${id}" was not found.`),
       { status: getHttpStatus("NOT_FOUND") },
     );
   }
 
-  const lotId = (itemData as { lot_id: string }).lot_id;
+  const lotId = itemRows[0].lot_id;
   const ip = getClientIp(request);
 
   // ── 6. Call item service to update location ────────────────────────────────
