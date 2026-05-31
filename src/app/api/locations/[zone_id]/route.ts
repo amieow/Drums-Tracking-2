@@ -13,8 +13,8 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
+import { getDb } from "@/lib/db";
 import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
-import { getSupabaseClient } from "@/lib/supabase";
 import {
   updateLocation,
   type UpdateLocationInput,
@@ -77,33 +77,40 @@ export async function GET(
 
   // ── 4. Query location_counts view directly for the specific zone ───────────
   try {
-    const supabase = getSupabaseClient();
+    const sql = getDb();
 
-    const { data, error } = await supabase
-      .from("location_counts")
-      .select(
-        "zone_id, name, type, temperature_target, capacity, current_count",
-      )
-      .eq("zone_id", zoneId)
-      .single();
+    const rows = await sql<
+      {
+        zone_id: string;
+        name: string;
+        type: string;
+        temperature_target: number | null;
+        capacity: number;
+        current_count: number;
+      }[]
+    >`
+      SELECT zone_id, name, type, temperature_target, capacity, current_count
+      FROM location_counts WHERE zone_id = ${zoneId} LIMIT 1
+    `;
 
-    if (error || !data) {
+    if (rows.length === 0) {
       return NextResponse.json(
         errorResponse("NOT_FOUND", "Location not found."),
         { status: getHttpStatus("NOT_FOUND") },
       );
     }
 
+    const row = rows[0];
     const location: Location = {
-      zone_id: data.zone_id as string,
-      name: data.name as string,
-      type: data.type as LocationType,
+      zone_id: row.zone_id,
+      name: row.name,
+      type: row.type as LocationType,
       temperature_target:
-        data.temperature_target != null
-          ? Number(data.temperature_target)
+        row.temperature_target != null
+          ? Number(row.temperature_target)
           : undefined,
-      capacity: Number(data.capacity),
-      current_count: Number(data.current_count),
+      capacity: Number(row.capacity),
+      current_count: Number(row.current_count),
     };
 
     return NextResponse.json(successResponse(location), { status: 200 });

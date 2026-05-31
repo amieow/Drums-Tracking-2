@@ -13,8 +13,8 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
+import { getDb } from "@/lib/db";
 import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
-import { getSupabaseClient } from "@/lib/supabase";
 import { registerItem } from "@/services/item-service";
 import type {
   Item,
@@ -171,55 +171,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // ── 4. Query items table ───────────────────────────────────────────────────
   try {
-    const supabase = getSupabaseClient();
+    const sql = getDb();
 
-    // Build count query
-    let countQuery = supabase
-      .from("items")
-      .select("id", { count: "exact", head: true });
+    // Build WHERE conditions
+    const conditions: string[] = [];
+    if (statusFilter) conditions.push(`current_status = '${statusFilter}'`);
+    if (locationFilter) conditions.push(`location_zone = '${locationFilter}'`);
+    const where =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    if (statusFilter) {
-      countQuery = countQuery.eq("current_status", statusFilter);
-    }
-    if (locationFilter) {
-      countQuery = countQuery.eq("location_zone", locationFilter);
-    }
+    const countRows = await sql.unsafe<{ count: string }[]>(
+      `SELECT COUNT(*) AS count FROM items ${where}`,
+    );
+    const total = parseInt(countRows[0]?.count ?? "0", 10);
 
-    const { count, error: countError } = await countQuery;
+    const items = await sql.unsafe<Item[]>(
+      `SELECT * FROM items ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+    );
 
-    if (countError) {
-      console.error("[GET /api/items] Count error:", countError.message);
-      return NextResponse.json(
-        errorResponse("INTERNAL_ERROR", "An unexpected error occurred."),
-        { status: getHttpStatus("INTERNAL_ERROR") },
-      );
-    }
-
-    // Build data query
-    let dataQuery = supabase
-      .from("items")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (statusFilter) {
-      dataQuery = dataQuery.eq("current_status", statusFilter);
-    }
-    if (locationFilter) {
-      dataQuery = dataQuery.eq("location_zone", locationFilter);
-    }
-
-    const { data: items, error: dataError } = await dataQuery;
-
-    if (dataError) {
-      console.error("[GET /api/items] Query error:", dataError.message);
-      return NextResponse.json(
-        errorResponse("INTERNAL_ERROR", "An unexpected error occurred."),
-        { status: getHttpStatus("INTERNAL_ERROR") },
-      );
-    }
-
-    const total = count ?? 0;
     const pagination: PaginationMeta = {
       page,
       limit,
@@ -227,7 +196,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       pages: Math.ceil(total / limit),
     };
 
-    return NextResponse.json(successResponse(items as Item[], pagination), {
+    return NextResponse.json(successResponse(items, pagination), {
       status: 200,
     });
   } catch (err) {

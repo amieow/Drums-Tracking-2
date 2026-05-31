@@ -16,8 +16,6 @@ import type { AuditAction, AuditEntry } from "@/types";
 import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 /** All auditable action types defined in the system. */
 const ALL_AUDIT_ACTIONS: AuditAction[] = [
   "item_created",
@@ -182,39 +180,52 @@ const nonItemAuditEntryArb = fc.record({
 
 // ─── Module mock setup ────────────────────────────────────────────────────────
 
-vi.mock("@/lib/supabase", () => ({
-  getSupabaseClient: vi.fn(),
+vi.mock("@/lib/db", () => ({
+  getDb: vi.fn(),
 }));
 
-import { getSupabaseClient } from "@/lib/supabase";
-
-// ─── Helper: simulate write-then-read round-trip ──────────────────────────────
+import { getDb } from "@/lib/db";
 
 /**
  * Simulates writing an AuditEntry to `audit_logs` and reading it back by `id`.
  *
- * Uses the mocked Supabase client to:
- * 1. Call `from("audit_logs").insert(entry)` — stores entry in memory
- * 2. Call `from("audit_logs").select("*").eq("id", entry.id).single()` — retrieves it
+ * Uses the mocked db client to:
+ * 1. Call insert — stores entry in memory
+ * 2. Call select — retrieves it
  *
  * Returns the retrieved entry (or null on failure).
  */
 async function roundTripAuditEntry(
   entry: AuditEntry,
 ): Promise<AuditEntry | null> {
-  const supabase = getSupabaseClient();
+  const sql = getDb() as unknown as {
+    from: (table: string) => {
+      insert: (d: AuditEntry) => Promise<{ error: null }>;
+      select: (s: string) => {
+        eq: (
+          k: string,
+          v: string,
+        ) => {
+          single: () => Promise<{
+            data: AuditEntry | null;
+            error: null | { message: string };
+          }>;
+        };
+      };
+    };
+  };
 
   // Write
-  const { error: insertError } = await supabase
-    .from("audit_logs")
-    .insert(entry);
+  const { error: insertError } = await sql.from("audit_logs").insert(entry);
 
   if (insertError) {
-    throw new Error(`Insert failed: ${insertError.message}`);
+    throw new Error(
+      `Insert failed: ${(insertError as { message: string }).message}`,
+    );
   }
 
   // Read back by id
-  const { data, error: selectError } = await supabase
+  const { data, error: selectError } = await sql
     .from("audit_logs")
     .select("*")
     .eq("id", entry.id)
@@ -244,7 +255,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
     await fc.assert(
       fc.asyncProperty(itemAuditEntryArb, async (entry) => {
         const { client } = makeAuditRoundTripMock();
-        vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+        vi.mocked(getDb).mockReturnValue(client as never);
 
         const retrieved = await roundTripAuditEntry(entry);
 
@@ -269,7 +280,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
     await fc.assert(
       fc.asyncProperty(nonItemAuditEntryArb, async (entry) => {
         const { client } = makeAuditRoundTripMock();
-        vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+        vi.mocked(getDb).mockReturnValue(client as never);
 
         const retrieved = await roundTripAuditEntry(entry);
 
@@ -294,7 +305,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
     await fc.assert(
       fc.asyncProperty(nonItemAuditEntryArb, async (entry) => {
         const { client } = makeAuditRoundTripMock();
-        vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+        vi.mocked(getDb).mockReturnValue(client as never);
 
         const retrieved = await roundTripAuditEntry(entry);
 
@@ -311,7 +322,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
     await fc.assert(
       fc.asyncProperty(nonItemAuditEntryArb, async (entry) => {
         const { client } = makeAuditRoundTripMock();
-        vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+        vi.mocked(getDb).mockReturnValue(client as never);
 
         const retrieved = await roundTripAuditEntry(entry);
 
@@ -347,7 +358,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
           };
 
           const { client } = makeAuditRoundTripMock();
-          vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+          vi.mocked(getDb).mockReturnValue(client as never);
 
           const retrieved = await roundTripAuditEntry(entry);
 
@@ -372,7 +383,7 @@ describe("Property 17: Audit Entry Completeness and Immutability Round-Trip", ()
         fc.oneof(itemAuditEntryArb, nonItemAuditEntryArb),
         async (entry) => {
           const { client } = makeAuditRoundTripMock();
-          vi.mocked(getSupabaseClient).mockReturnValue(client as never);
+          vi.mocked(getDb).mockReturnValue(client as never);
 
           const retrieved = await roundTripAuditEntry(entry);
 

@@ -1,26 +1,52 @@
 /**
  * JWT Utilities — Token extraction and verification
  *
- * Provides helpers for extracting Bearer tokens from Authorization headers
- * and verifying JWTs via Supabase Auth.
+ * Signs and verifies JWTs using the `jose` library with a shared secret
+ * (JWT_SECRET environment variable). No external auth service required.
  */
 
 import type { JWTPayload, UserRole } from "@/types";
-import { createClient } from "@supabase/supabase-js";
+import { SignJWT, jwtVerify } from "jose";
 
 /** Valid roles accepted by the system. */
 const VALID_ROLES: UserRole[] = ["operator", "qc", "ppic", "admin"];
+
+/** Token expiry — 8 hours. */
+const TOKEN_EXPIRY = "8h";
+
+function getSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("Missing environment variable: JWT_SECRET is required.");
+  }
+  return new TextEncoder().encode(secret);
+}
+
+/**
+ * Signs a new JWT for the given user.
+ *
+ * @param payload - The user payload to embed in the token.
+ * @returns A signed JWT string.
+ */
+export async function signJwt(payload: {
+  sub: string;
+  email: string;
+  role: UserRole;
+}): Promise<string> {
+  const secret = getSecret();
+  return new SignJWT({ email: payload.email, role: payload.role })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(payload.sub)
+    .setIssuedAt()
+    .setExpirationTime(TOKEN_EXPIRY)
+    .sign(secret);
+}
 
 /**
  * Extracts the token string from an `Authorization: Bearer <token>` header.
  *
  * @param authHeader - The raw value of the Authorization header, or null.
  * @returns The token string, or null if the header is missing or malformed.
- *
- * @example
- * extractBearerToken("Bearer eyJ...")  // → "eyJ..."
- * extractBearerToken(null)             // → null
- * extractBearerToken("Basic abc")      // → null
  */
 export function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader) return null;
@@ -29,71 +55,29 @@ export function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
- * Verifies a JWT token using Supabase Auth and returns the decoded payload.
- *
- * Uses `supabase.auth.getUser(token)` to validate the token server-side.
- * Extracts the `role` claim from `user_metadata.role` or `app_metadata.role`.
+ * Verifies a JWT token and returns the decoded payload.
  *
  * @param token - The raw JWT string to verify.
- * @returns The decoded `JWTPayload` on success, or `null` if the token is
- *          invalid, expired, malformed, or missing/invalid role claim.
+ * @returns The decoded `JWTPayload` on success, or `null` if invalid/expired.
  */
 export async function verifyJwt(token: string): Promise<JWTPayload | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error(
-      "verifyJwt: Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    );
-    return null;
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data.user) {
-    return null;
-  }
-
-  const user = data.user;
-
-  // Extract role from user_metadata first, then fall back to app_metadata
-  const role: unknown =
-    user.user_metadata?.role ?? user.app_metadata?.role ?? null;
-
-  if (!role || !VALID_ROLES.includes(role as UserRole)) {
-    return null;
-  }
-
-  // Decode the JWT payload to extract iat/exp claims
-  // The token is a standard JWT: header.payload.signature (base64url encoded)
-  let iat: number;
-  let exp: number;
-
   try {
-    const payloadBase64 = token.split(".")[1];
-    if (!payloadBase64) return null;
+    const secret = getSecret();
+    const { payload } = await jwtVerify(token, secret);
 
-    // base64url → base64 → JSON
-    const padded = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonStr = Buffer.from(padded, "base64").toString("utf-8");
-    const decoded = JSON.parse(jsonStr) as Record<string, unknown>;
+    const role = payload.role as unknown;
+    if (!role || !VALID_ROLES.includes(role as UserRole)) {
+      return null;
+    }
 
-    iat = typeof decoded.iat === "number" ? decoded.iat : 0;
-    exp = typeof decoded.exp === "number" ? decoded.exp : 0;
+    return {
+      sub: payload.sub ?? "",
+      email: (payload.email as string) ?? "",
+      role: role as UserRole,
+      iat: payload.iat ?? 0,
+      exp: payload.exp ?? 0,
+    };
   } catch {
     return null;
   }
-
-  const payload: JWTPayload = {
-    sub: user.id,
-    email: user.email ?? "",
-    role: role as UserRole,
-    iat,
-    exp,
-  };
-
-  return payload;
 }

@@ -15,27 +15,14 @@
  * Validates: Requirements 12.5, 12.6
  */
 
-import { getSupabaseClient } from "@/lib/supabase";
+import { getDb } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const supabase = getSupabaseClient();
-
+    const sql = getDb();
     // Lightweight ping: fetch at most one row from the locations table.
-    // A successful response (even an empty result set) confirms the DB is up.
-    const { error } = await supabase
-      .from("locations")
-      .select("zone_id")
-      .limit(1);
-
-    if (error) {
-      return NextResponse.json(
-        { ready: false, error: "INTERNAL_ERROR" },
-        { status: 503 },
-      );
-    }
-
+    await sql`SELECT zone_id FROM locations LIMIT 1`;
     return NextResponse.json({ ready: true }, { status: 200 });
   } catch {
     // Catches thrown errors such as missing env vars or network failures.

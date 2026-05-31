@@ -2,13 +2,8 @@
  * PATCH  /api/admin/users/[id] — Update a user's role (admin only)
  * DELETE /api/admin/users/[id] — Deactivate (soft-ban) a user (admin only)
  *
- * Enforces admin-only RBAC via the `x-user-role` header injected by
- * middleware. Uses the Supabase Auth Admin API to update and deactivate users.
- *
- * Soft-ban strategy: instead of hard-deleting the user record (which would
- * break audit trail foreign keys), DELETE sets `ban_duration: "876600h"`
- * (~100 years) via `updateUserById`. This preserves the audit trail while
- * effectively preventing the user from signing in.
+ * Uses direct PostgreSQL queries against the `users` table.
+ * Soft-ban sets `banned_until` to 100 years in the future to preserve audit trail.
  *
  * Validates: Requirements 2.4
  */
@@ -18,55 +13,33 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
+import { getDb } from "@/lib/db";
 import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
-import { getSupabaseClient } from "@/lib/supabase";
 import type { UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Extract and validate the user context headers injected by middleware. */
-function getUserContext(request: NextRequest): {
-  userId: string;
-  userRole: UserRole;
-  userEmail: string;
-} | null {
+function getUserContext(
+  request: NextRequest,
+): { userId: string; userRole: UserRole; userEmail: string } | null {
   const userId = request.headers.get("x-user-id");
   const userRole = request.headers.get("x-user-role") as UserRole | null;
   const userEmail = request.headers.get("x-user-email");
-
   if (!userId || !userRole || !userEmail) return null;
   return { userId, userRole, userEmail };
 }
 
-/** Return the client IP from the forwarded header or fall back to "unknown". */
 function getClientIp(request: NextRequest): string {
   return (
     request.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown"
   );
 }
 
-// ─── PATCH /api/admin/users/[id] ─────────────────────────────────────────────
-
-/**
- * Updates the role of an existing user.
- *
- * Request body: `{ role: UserRole }`
- *
- * The new role is stored in `user_metadata.role` via the Supabase Auth Admin
- * API. Only the `admin` role may call this endpoint. Non-admin requests
- * receive a `FORBIDDEN` response and a `forbidden_attempt` audit entry is
- * written.
- *
- * Validates: Requirements 2.4
- */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  // ── 1. Auth context ──────────────────────────────────────────────────────
   const ctx = getUserContext(request);
   if (!ctx) {
     return NextResponse.json(
@@ -75,7 +48,6 @@ export async function PATCH(
     );
   }
 
-  // ── 2. RBAC — admin only ─────────────────────────────────────────────────
   if (!checkPermission(ctx.userRole, "users:manage")) {
     void writeForbiddenAttempt({
       userId: ctx.userId,
@@ -89,7 +61,6 @@ export async function PATCH(
     );
   }
 
-  // ── 3. Parse and validate request body ───────────────────────────────────
   let body: { role?: unknown };
   try {
     body = await request.json();
@@ -112,48 +83,42 @@ export async function PATCH(
     );
   }
 
-  // ── 4. Update user role via Supabase Auth Admin API ──────────────────────
   try {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase.auth.admin.updateUserById(id, {
-      user_metadata: { role: role as UserRole },
-    });
+    const sql = getDb();
+    const rows = await sql<
+      {
+        id: string;
+        email: string;
+        role: string;
+        banned_until: string | null;
+        created_at: string;
+        last_sign_in_at: string | null;
+      }[]
+    >`
+      UPDATE users SET role = ${role as string}, updated_at = NOW()
+      WHERE id = ${id}::uuid
+      RETURNING id, email, role, banned_until, created_at, last_sign_in_at
+    `;
 
-    if (error) {
-      console.error(
-        "[PATCH /api/admin/users/[id]] Supabase error:",
-        error.message,
-      );
-
-      if (
-        error.message.toLowerCase().includes("not found") ||
-        error.message.toLowerCase().includes("does not exist")
-      ) {
-        return NextResponse.json(
-          errorResponse("NOT_FOUND", "User not found."),
-          { status: getHttpStatus("NOT_FOUND") },
-        );
-      }
-
-      return NextResponse.json(
-        errorResponse("INTERNAL_ERROR", "Failed to update user."),
-        { status: getHttpStatus("INTERNAL_ERROR") },
-      );
+    if (rows.length === 0) {
+      return NextResponse.json(errorResponse("NOT_FOUND", "User not found."), {
+        status: getHttpStatus("NOT_FOUND"),
+      });
     }
 
     const now = new Date().toISOString();
-    const updated = {
-      id: data.user.id,
-      email: data.user.email ?? "",
-      role:
-        (data.user.user_metadata?.role as UserRole | undefined) ??
-        (role as UserRole),
-      banned: !!data.user.banned_until && data.user.banned_until > now,
-      created_at: data.user.created_at,
-      last_sign_in_at: data.user.last_sign_in_at ?? null,
-    };
-
-    return NextResponse.json(successResponse(updated), { status: 200 });
+    const u = rows[0];
+    return NextResponse.json(
+      successResponse({
+        id: u.id,
+        email: u.email,
+        role: u.role as UserRole,
+        banned: !!u.banned_until && u.banned_until > now,
+        created_at: u.created_at,
+        last_sign_in_at: u.last_sign_in_at ?? null,
+      }),
+      { status: 200 },
+    );
   } catch (err) {
     console.error("[PATCH /api/admin/users/[id]] Unexpected error:", err);
     return NextResponse.json(
@@ -163,28 +128,12 @@ export async function PATCH(
   }
 }
 
-// ─── DELETE /api/admin/users/[id] ────────────────────────────────────────────
-
-/**
- * Deactivates (soft-bans) a user by setting a very long ban duration.
- *
- * A hard delete is intentionally avoided to preserve the audit trail — all
- * `audit_logs` rows referencing this user remain intact. The user is banned
- * for 876600 hours (~100 years), which effectively prevents sign-in while
- * keeping the record in Supabase Auth.
- *
- * Only the `admin` role may call this endpoint. Non-admin requests receive
- * a `FORBIDDEN` response and a `forbidden_attempt` audit entry is written.
- *
- * Validates: Requirements 2.4
- */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  // ── 1. Auth context ──────────────────────────────────────────────────────
   const ctx = getUserContext(request);
   if (!ctx) {
     return NextResponse.json(
@@ -193,7 +142,6 @@ export async function DELETE(
     );
   }
 
-  // ── 2. RBAC — admin only ─────────────────────────────────────────────────
   if (!checkPermission(ctx.userRole, "users:manage")) {
     void writeForbiddenAttempt({
       userId: ctx.userId,
@@ -207,35 +155,22 @@ export async function DELETE(
     );
   }
 
-  // ── 3. Soft-ban user via Supabase Auth Admin API ─────────────────────────
-  // Using ban_duration instead of deleteUser to preserve the audit trail.
-  // 876600h ≈ 100 years — effectively permanent deactivation.
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.admin.updateUserById(id, {
-      ban_duration: "876600h",
-    });
+    const sql = getDb();
+    // Soft-ban: set banned_until ~100 years in the future to preserve audit trail
+    const bannedUntil = new Date(
+      Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const rows = await sql<{ id: string }[]>`
+      UPDATE users SET banned_until = ${bannedUntil}, updated_at = NOW()
+      WHERE id = ${id}::uuid
+      RETURNING id
+    `;
 
-    if (error) {
-      console.error(
-        "[DELETE /api/admin/users/[id]] Supabase error:",
-        error.message,
-      );
-
-      if (
-        error.message.toLowerCase().includes("not found") ||
-        error.message.toLowerCase().includes("does not exist")
-      ) {
-        return NextResponse.json(
-          errorResponse("NOT_FOUND", "User not found."),
-          { status: getHttpStatus("NOT_FOUND") },
-        );
-      }
-
-      return NextResponse.json(
-        errorResponse("INTERNAL_ERROR", "Failed to deactivate user."),
-        { status: getHttpStatus("INTERNAL_ERROR") },
-      );
+    if (rows.length === 0) {
+      return NextResponse.json(errorResponse("NOT_FOUND", "User not found."), {
+        status: getHttpStatus("NOT_FOUND"),
+      });
     }
 
     return NextResponse.json(successResponse({ id }), { status: 200 });
