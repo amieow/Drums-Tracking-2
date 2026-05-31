@@ -1,0 +1,39 @@
+{
+  "recommendations": [
+    // Core
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    
+    // TypeScript/JavaScript
+    "ms-vscode.vscode-typescript-next",
+    
+    // React
+    "dsznajder.es7-react-js-snippets",
+    "burkeholland.simple-react-snippets",
+    
+    // Testing
+    "vitest.explorer",
+    "ms-playwright.playwright",
+    
+    // Database
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    
+    // Git
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    
+    // AI/Copilot
+    "github.copilot",
+    "github.copilot-chat",
+    
+    // Markdown
+    "yzhang.markdown-all-in-one",
+    "bierner.markdown-mermaid",
+    
+    // Utilities
+    "usernamehw.errorlens",
+    "gruntfuggly.todo-tree",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}

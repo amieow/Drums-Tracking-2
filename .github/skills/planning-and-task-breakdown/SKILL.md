@@ -1,0 +1,158 @@
+---
+name: planning-and-task-breakdown
+description: Decomposes specs into implementable tasks. Use when you have a spec or feature description and need to break it into small, verifiable tasks with acceptance criteria and dependency ordering.
+---
+
+# Planning and Task Breakdown
+
+## Overview
+
+Decompose specifications into small, verifiable tasks with clear acceptance criteria and dependency ordering. Good planning prevents the "implement everything at once" anti-pattern and enables incremental delivery with verification at each step.
+
+## When to Use
+
+- You have a spec or feature description and need implementable units
+- A feature is too large to build in one pass
+- Multiple agents or developers will work in parallel
+- You need to estimate effort or report progress
+
+## Task Decomposition Process
+
+### Step 1: Identify the Deliverables
+
+From the spec, list every concrete deliverable:
+
+```
+Feature: Task Management
+
+Deliverables:
+0. Install Buildpad UI components (CLI)
+1. Database migration for tasks table
+2. API route for CRUD operations
+3. TypeScript interfaces
+4. List page with CollectionList
+5. Create/Edit form with CollectionForm
+6. RBAC permissions (roles, policies)
+7. Tests (API, page, E2E)
+8. Documentation
+```
+
+### Step 2: Order by Dependencies
+
+```
+                ┌─── 3. Types ───────┐
+1. Migration ───┤                    ├─── 5. Form ──┐
+                └─── 2. API Route ───┤              ├─── 7. Tests
+                                     └─── 4. List ──┘       │
+                     6. RBAC ────────────────────────────────┘
+                                                             │
+                                                        8. Docs
+```
+
+### Step 3: Write Tasks with Acceptance Criteria
+
+Each task should be:
+- **Small** — completable in one sitting (~100 lines)
+- **Verifiable** — has clear pass/fail criteria
+- **Independent** — can be tested without other unfinished tasks
+- **Committed separately** — each task = one commit
+
+```markdown
+### Task 1: Create tasks migration
+**Depends on:** Nothing
+**Files:** supabase/migrations/YYYYMMDD_create_tasks.sql
+**Acceptance criteria:**
+- [ ] Migration creates tasks table with fields: id, title, status, date_created, date_updated
+- [ ] Standard audit fields included (user_created, user_updated)
+- [ ] RLS policies for authenticated users
+- [ ] Migration runs without errors
+
+### Task 2: Create tasks API route
+**Depends on:** Task 1 (migration)
+**Files:** app/api/items/tasks/route.ts
+**Acceptance criteria:**
+- [ ] GET returns paginated task list
+- [ ] POST creates a task with validation
+- [ ] Proxy pattern used (calls DaaS backend)
+- [ ] API tests pass
+```
+
+## DaaS Phase Alignment
+
+Tasks should align with the DaaS phased development model:
+
+| Phase | Task Types |
+|-------|-----------|
+| Phase 0 (Foundation) | Bootstrap project, install Buildpad UI components (CLI), env config, test infra |
+| Phase 1 (Data) | Migrations, API routes, types, API tests |
+| Phase 2 (UI) | List pages, form pages, navigation, page tests |
+| Phase 3 (Logic) | Validation hooks, RBAC setup, workflow definitions |
+| Phase 4 (Relations) | Junction tables, relational fields, file uploads |
+| Phase 5 (Polish) | Error handling, performance, a11y, docs, E2E tests |
+
+> **Phase 0 is mandatory.** Buildpad UI components (`CollectionList`, `VForm`, `Input`, etc.) only exist at `@/components/ui/*` after the CLI installs them. The first task is always "Install Buildpad UI components" — `npx @buildpad/cli@latest bootstrap` for a new project, or `add <components>` for a feature in an already-bootstrapped project. Every UI task that imports `@/components/ui/*` depends on it.
+
+## Task Size Guidelines
+
+```
+~30 min  → Single file change (migration, type definition)
+~1 hour  → Small feature slice (API route + test)
+~2 hours → Moderate slice (page + form + tests)
+~4 hours → MAXIMUM for a single task — split further if larger
+```
+
+## Output Format
+
+```markdown
+## Implementation Plan: [Feature Name]
+
+### Phase 0: Foundation
+- [ ] Task 0.1: Install Buildpad UI components — `bootstrap` (new project) or `add <components>` (feature); verify `@/components/ui/*` resolves
+
+### Phase 1: Data Foundation
+- [ ] Task 1.1: Create migration — [acceptance criteria]
+- [ ] Task 1.2: Create API route — [acceptance criteria]
+- [ ] Task 1.3: Define TypeScript types — [acceptance criteria]
+- [ ] Task 1.4: Write API tests — [acceptance criteria]
+
+### Phase 2: Core UI
+- [ ] Task 2.1: Create list page — [acceptance criteria]
+- [ ] Task 2.2: Create form page — [acceptance criteria]
+- [ ] Task 2.3: Add navigation — [acceptance criteria]
+- [ ] Task 2.4: Write page tests — [acceptance criteria]
+
+### Risks & Dependencies
+- [Known risk 1 and mitigation]
+- [External dependency and fallback]
+```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Planning takes too long" | Debugging an unplanned implementation takes longer. |
+| "I'll figure out the order as I go" | Dependency loops discovered mid-implementation cause rework. |
+| "These tasks are too granular" | Granular tasks are verifiable. Vague tasks hide unknowns. |
+| "We can parallelize everything" | Dependencies exist. Ignoring them causes integration failures. |
+
+## Red Flags
+
+- Tasks without acceptance criteria
+- Tasks estimated at more than 4 hours
+- No dependency ordering (just a flat list)
+- Tasks that can't be independently tested
+- Mixing different phases in a single task
+- No risk identification
+- A UI task that imports `@/components/ui/*` with no Buildpad component-install task ordered before it
+
+## Verification
+
+After planning:
+
+- [ ] Every spec requirement maps to at least one task
+- [ ] Every task has acceptance criteria
+- [ ] Dependencies are identified and ordered
+- [ ] No task exceeds ~4 hours of estimated work
+- [ ] Each task can be independently verified
+- [ ] Tasks align with DaaS development phases
+- [ ] A Buildpad component-install task (Phase 0) precedes every UI task
