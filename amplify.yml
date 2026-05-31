@@ -7,11 +7,20 @@ frontend:
         - pnpm install
     build:
       commands:
+        # Write server-side env vars into .env.production so they are available
+        # to Next.js API routes (SSR / Lambda) at runtime on Amplify.
+        # NEXT_PUBLIC_* vars are already inlined at build time by Next.js.
+        - echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> .env.production
+        # DAAS_BASE_URL falls back to NEXT_PUBLIC_BUILDPAD_DAAS_URL if not set separately
+        - echo "DAAS_BASE_URL=${DAAS_BASE_URL:-$NEXT_PUBLIC_BUILDPAD_DAAS_URL}" >> .env.production
+        # DAAS_WS_URL falls back to the wss:// equivalent of NEXT_PUBLIC_BUILDPAD_DAAS_URL
+        - DAAS_WS_FALLBACK=$(echo "$NEXT_PUBLIC_BUILDPAD_DAAS_URL" | sed 's|^https://|wss://|')/ws
+        - echo "DAAS_WS_URL=${DAAS_WS_URL:-$DAAS_WS_FALLBACK}" >> .env.production
         - pnpm build
   artifacts:
     baseDirectory: .next
     files:
-      - '**/*'
+      - "**/*"
   cache:
     paths:
       - node_modules/**

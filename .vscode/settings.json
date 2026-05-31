@@ -1,17 +1,13 @@
 {
   // DaaS RAD Platform Settings
-  
+
   // ===== GitHub Copilot =====
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
-  "chat.instructionsFilesLocations": [
-    ".github/instructions"
-  ],
-  "chat.promptFilesLocations": [
-    ".github/prompts"
-  ],
+  "chat.instructionsFilesLocations": [".github/instructions"],
+  "chat.promptFilesLocations": [".github/prompts"],
   "chat.useAgentsMdFile": true,
   "chat.useNestedAgentsMdFiles": false,
-  
+
   // ===== Copilot Customization =====
   "github.copilot.chat.commitMessageGeneration.instructions": [
     { "text": "Use conventional commit format: type(scope): description" },
@@ -23,10 +19,10 @@
     { "file": ".github/instructions/api-routes.instructions.md" },
     { "file": ".github/instructions/react-components.instructions.md" }
   ],
-  
+
   // ===== DaaS Configuration =====
-  "daas.mcpToken": "",  // Set your MCP token here
-  
+  "daas.mcpToken": "", // Set your MCP token here
+
   // ===== Editor Settings =====
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
@@ -34,12 +30,12 @@
     "source.fixAll.eslint": "explicit",
     "source.organizeImports": "explicit"
   },
-  
+
   // ===== TypeScript =====
   "typescript.preferences.importModuleSpecifier": "non-relative",
   "typescript.suggest.autoImports": true,
   "typescript.updateImportsOnFileMove.enabled": "always",
-  
+
   // ===== Files =====
   "files.associations": {
     "*.instructions.md": "markdown",
@@ -51,15 +47,16 @@
     "**/node_modules": true,
     "**/.git": true
   },
-  
+
   // ===== Search =====
   "search.exclude": {
     "**/node_modules": true,
     "**/.next": true,
     "**/pnpm-lock.yaml": true
   },
-  
+
   // ===== Testing =====
   "vitest.enable": true,
-  "vitest.commandLine": "pnpm vitest"
+  "vitest.commandLine": "pnpm vitest",
+  "typescript.autoClosingTags": false
 }
