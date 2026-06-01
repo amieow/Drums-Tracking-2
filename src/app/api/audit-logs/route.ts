@@ -13,7 +13,8 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import { checkPermission } from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import { queryAuditLogs } from "@/services/audit-service";
 import type { AuditLogQuery, UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";

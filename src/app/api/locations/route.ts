@@ -13,7 +13,8 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import { checkPermission } from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import {
   createLocation,
   listLocations,

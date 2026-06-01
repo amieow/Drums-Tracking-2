@@ -51,22 +51,22 @@ export async function queryAuditLogs(
 
   const sql = getDb();
 
-  // Build dynamic WHERE conditions
-  const conditions: string[] = [];
-  if (query.date_from) conditions.push(`timestamp >= '${query.date_from}'`);
-  if (query.date_to) conditions.push(`timestamp <= '${query.date_to}'`);
-  if (query.user_id) conditions.push(`user_id = '${query.user_id}'::uuid`);
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const countRows = await sql.unsafe<{ count: string }[]>(
-    `SELECT COUNT(*) AS count FROM audit_logs ${where}`,
-  );
+  const countRows = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count FROM audit_logs
+    WHERE (${query.date_from ?? null}::text IS NULL OR timestamp >= ${query.date_from ?? null}::timestamptz)
+      AND (${query.date_to ?? null}::text IS NULL OR timestamp <= ${query.date_to ?? null}::timestamptz)
+      AND (${query.user_id ?? null}::text IS NULL OR user_id = ${query.user_id ?? null}::uuid)
+  `;
   const total = parseInt(countRows[0]?.count ?? "0", 10);
 
-  const dataRows = await sql.unsafe<AuditEntry[]>(
-    `SELECT * FROM audit_logs ${where} ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
-  );
+  const dataRows = await sql<AuditEntry[]>`
+    SELECT * FROM audit_logs
+    WHERE (${query.date_from ?? null}::text IS NULL OR timestamp >= ${query.date_from ?? null}::timestamptz)
+      AND (${query.date_to ?? null}::text IS NULL OR timestamp <= ${query.date_to ?? null}::timestamptz)
+      AND (${query.user_id ?? null}::text IS NULL OR user_id = ${query.user_id ?? null}::uuid)
+    ORDER BY timestamp DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
 
   void userId;
 
@@ -93,16 +93,14 @@ export async function exportAuditLogsCsv(
 
   const sql = getDb();
 
-  const conditions: string[] = [];
-  if (query.date_from) conditions.push(`timestamp >= '${query.date_from}'`);
-  if (query.date_to) conditions.push(`timestamp <= '${query.date_to}'`);
-  if (query.user_id) conditions.push(`user_id = '${query.user_id}'::uuid`);
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const rows = await sql.unsafe<AuditEntry[]>(
-    `SELECT * FROM audit_logs ${where} ORDER BY timestamp DESC LIMIT ${MAX_EXPORT_ENTRIES + 1}`,
-  );
+  const rows = await sql<AuditEntry[]>`
+    SELECT * FROM audit_logs
+    WHERE (${query.date_from ?? null}::text IS NULL OR timestamp >= ${query.date_from ?? null}::timestamptz)
+      AND (${query.date_to ?? null}::text IS NULL OR timestamp <= ${query.date_to ?? null}::timestamptz)
+      AND (${query.user_id ?? null}::text IS NULL OR user_id = ${query.user_id ?? null}::uuid)
+    ORDER BY timestamp DESC
+    LIMIT ${MAX_EXPORT_ENTRIES + 1}
+  `;
 
   if (rows.length > MAX_EXPORT_ENTRIES) {
     throw {

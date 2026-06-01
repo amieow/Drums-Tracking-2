@@ -92,7 +92,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       SELECT id, email, password_hash, role
       FROM users
       WHERE email = ${email.trim().toLowerCase()}
-        AND banned_until IS NULL OR banned_until < NOW()
+        AND (banned_until IS NULL OR banned_until < NOW())
       LIMIT 1
     `;
 

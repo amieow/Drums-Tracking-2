@@ -8,8 +8,7 @@
  * entries as required by Requirement 2.5.
  */
 
-import { getDb } from "@/lib/db";
-import type { UserRole } from "@/types";
+import type { ItemStatus, UserRole } from "@/types";
 
 // ─── Action Constants ─────────────────────────────────────────────────────────
 
@@ -115,40 +114,112 @@ export function checkPermission(role: UserRole, action: string): boolean {
   return allowed.has(action);
 }
 
-// ─── Forbidden Attempt Audit ──────────────────────────────────────────────────
+// ─── Status-to-Role Mapping ────────────────────────────────────────────────────
 
 /**
- * Writes a `forbidden_attempt` AuditEntry to the audit_logs table.
+ * Groups the `ItemStatus` transition targets a scan can produce by the
+ * permission that gates them. This projects the implicit status-to-role
+ * relationship in `PERMISSIONS` into an explicit, reusable mapping so the scan
+ * UI and the bulk-scan API stay in sync (single source of truth).
  *
- * Called whenever a user attempts an action that exceeds their role's
- * permissions. Records `user_id`, `action`, and `timestamp` as required
- * by Requirement 2.5.
+ * - QC statuses (`items:qc_pass` / `items:qc_fail`) → `qc_pass`, `qc_fail`.
+ * - Operator statuses (`items:update_status`) → `qc_pending`, `in_production`,
+ *   `finished`, `cold_storage`, `dispatched`, `archived`.
  *
- * Failures are logged but never thrown — the FORBIDDEN response is always
- * returned to the caller regardless of whether the audit write succeeds.
- *
- * @param params.userId    - The authenticated user's UUID.
- * @param params.userEmail - The authenticated user's email.
- * @param params.action    - The action that was denied.
- * @param params.ip        - The client IP address.
- *
- * Validates: Requirement 2.5
+ * `qc_pending` is treated as an operator status: the operator performs the
+ * `received → qc_pending` hand-off via `items:update_status`.
  */
-export async function writeForbiddenAttempt(params: {
-  userId: string;
-  userEmail: string;
-  action: string;
-  ip: string;
-}): Promise<void> {
-  const { userId, userEmail, action, ip } = params;
+export const STATUS_GROUPS_BY_PERMISSION: {
+  permission: string;
+  statuses: ItemStatus[];
+}[] = [
+  {
+    permission: ACTIONS.ITEMS_QC_PASS,
+    statuses: ["qc_pass"],
+  },
+  {
+    permission: ACTIONS.ITEMS_QC_FAIL,
+    statuses: ["qc_fail"],
+  },
+  {
+    permission: ACTIONS.ITEMS_UPDATE_STATUS,
+    statuses: [
+      "qc_pending",
+      "in_production",
+      "finished",
+      "cold_storage",
+      "dispatched",
+      "archived",
+    ],
+  },
+];
 
-  try {
-    const sql = getDb();
-    await sql`
-      INSERT INTO audit_logs (item_id, action, previous_state, new_state, user_id, user_email, ip_address, timestamp)
-      VALUES (NULL, 'forbidden_attempt', NULL, ${JSON.stringify({ action })}, ${userId}::uuid, ${userEmail}, ${ip}, ${new Date().toISOString()})
-    `;
-  } catch (err) {
-    console.error(`[rbac] Unexpected error writing forbidden_attempt:`, err);
+/**
+ * Master ordered list of the 8 scan target statuses in stable display order.
+ *
+ * `getAllowedTargetStatuses` filters this list by role so the result always
+ * follows this exact order regardless of which groups are included. For admin
+ * (which holds every gating permission) this yields all 8 in order:
+ * `qc_pending, qc_pass, qc_fail, in_production, finished, cold_storage,
+ * dispatched, archived`.
+ */
+const TARGET_STATUS_DISPLAY_ORDER: ItemStatus[] = [
+  "qc_pending",
+  "qc_pass",
+  "qc_fail",
+  "in_production",
+  "finished",
+  "cold_storage",
+  "dispatched",
+  "archived",
+];
+
+/** Map each target status to the permission that gates it (derived from groups). */
+const STATUS_GATING_PERMISSION: Record<ItemStatus, string> = (() => {
+  const map = {} as Record<ItemStatus, string>;
+  for (const group of STATUS_GROUPS_BY_PERMISSION) {
+    for (const status of group.statuses) {
+      map[status] = group.permission;
+    }
   }
+  return map;
+})();
+
+/**
+ * Returns the ordered list of `ItemStatus` values the given role is permitted to
+ * transition items into via scan — the union of the status groups whose gating
+ * permission the role holds, in stable display order.
+ *
+ * Derived entirely from `checkPermission` so `PERMISSIONS` remains the single
+ * source of truth.
+ *
+ * @example
+ * getAllowedTargetStatuses("operator")
+ *   // ["qc_pending", "in_production", "finished", "cold_storage", "dispatched", "archived"]
+ * getAllowedTargetStatuses("qc")     // ["qc_pass", "qc_fail"]
+ * getAllowedTargetStatuses("admin")
+ *   // ["qc_pending", "qc_pass", "qc_fail", "in_production", "finished", "cold_storage", "dispatched", "archived"]
+ * getAllowedTargetStatuses("ppic")   // []
+ */
+export function getAllowedTargetStatuses(role: UserRole): ItemStatus[] {
+  return TARGET_STATUS_DISPLAY_ORDER.filter((status) =>
+    checkPermission(role, STATUS_GATING_PERMISSION[status]),
+  );
+}
+
+/**
+ * Returns `true` if the given role is permitted to transition items into the
+ * given target status via scan. Used by the bulk-scan API to validate each
+ * submitted `target_status` against the caller's role (server-side guard).
+ *
+ * @example
+ * isTargetStatusAllowed("operator", "in_production") // true
+ * isTargetStatusAllowed("operator", "qc_pass")       // false
+ * isTargetStatusAllowed("qc", "qc_pass")             // true
+ */
+export function isTargetStatusAllowed(
+  role: UserRole,
+  status: ItemStatus,
+): boolean {
+  return getAllowedTargetStatuses(role).includes(status);
 }

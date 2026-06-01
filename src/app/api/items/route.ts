@@ -14,7 +14,8 @@ import {
   successResponse,
 } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import { checkPermission } from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import { registerItem } from "@/services/item-service";
 import type {
   Item,
@@ -173,21 +174,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getDb();
 
-    // Build WHERE conditions
-    const conditions: string[] = [];
-    if (statusFilter) conditions.push(`current_status = '${statusFilter}'`);
-    if (locationFilter) conditions.push(`location_zone = '${locationFilter}'`);
-    const where =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    const countRows = await sql.unsafe<{ count: string }[]>(
-      `SELECT COUNT(*) AS count FROM items ${where}`,
-    );
+    const countRows = await sql<{ count: string }[]>`
+      SELECT COUNT(*) AS count FROM items
+      WHERE (${statusFilter ?? null}::text IS NULL OR current_status = ${statusFilter ?? null})
+        AND (${locationFilter ?? null}::text IS NULL OR location_zone = ${locationFilter ?? null})
+    `;
     const total = parseInt(countRows[0]?.count ?? "0", 10);
 
-    const items = await sql.unsafe<Item[]>(
-      `SELECT * FROM items ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
-    );
+    const items = await sql<Item[]>`
+      SELECT * FROM items
+      WHERE (${statusFilter ?? null}::text IS NULL OR current_status = ${statusFilter ?? null})
+        AND (${locationFilter ?? null}::text IS NULL OR location_zone = ${locationFilter ?? null})
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
 
     const pagination: PaginationMeta = {
       page,

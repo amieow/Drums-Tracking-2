@@ -116,7 +116,7 @@ describe("createWsClient", () => {
     expect(ws.url).toContain(`token=${encodeURIComponent(token)}`);
     expect(ws.url).toMatch(/^wss?:\/\//);
 
-    client.disconnect();
+    client!.disconnect();
   });
 
   // ── Test 2: item_updated event triggers onEvent handler ────────────────────
@@ -126,7 +126,7 @@ describe("createWsClient", () => {
     const ws = latestInstance();
 
     const handler = vi.fn();
-    client.onEvent(handler);
+    client!.onEvent(handler);
 
     const payload: WsServerEvent = {
       event: "item_updated",
@@ -145,7 +145,7 @@ describe("createWsClient", () => {
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith(payload);
 
-    client.disconnect();
+    client!.disconnect();
   });
 
   // ── Test 3: item_created event triggers onEvent handler ────────────────────
@@ -155,7 +155,7 @@ describe("createWsClient", () => {
     const ws = latestInstance();
 
     const handler = vi.fn();
-    client.onEvent(handler);
+    client!.onEvent(handler);
 
     const payload: WsServerEvent = {
       event: "item_created",
@@ -174,7 +174,7 @@ describe("createWsClient", () => {
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith(payload);
 
-    client.disconnect();
+    client!.disconnect();
   });
 
   // ── Test 4: Auto-reconnect — 3 drops → 3 reconnect attempts at 1s intervals
@@ -272,7 +272,7 @@ describe("createWsClient", () => {
     const ws = latestInstance();
 
     ws.simulateOpen();
-    client.disconnect();
+    client!.disconnect();
 
     // Simulate a close event after disconnect (e.g., server-side close)
     ws.simulateClose();
@@ -289,7 +289,7 @@ describe("createWsClient", () => {
     latestInstance().simulateClose();
 
     // Reconnect timer is now pending — disconnect before it fires
-    client.disconnect();
+    client!.disconnect();
 
     vi.advanceTimersByTime(2000);
 
@@ -305,8 +305,8 @@ describe("createWsClient", () => {
 
     const handler1 = vi.fn();
     const handler2 = vi.fn();
-    client.onEvent(handler1);
-    client.onEvent(handler2);
+    client!.onEvent(handler1);
+    client!.onEvent(handler2);
 
     const payload: WsServerEvent = {
       event: "item_updated",
@@ -325,7 +325,7 @@ describe("createWsClient", () => {
     expect(handler1).toHaveBeenCalledOnce();
     expect(handler2).toHaveBeenCalledOnce();
 
-    client.disconnect();
+    client!.disconnect();
   });
 
   // ── Additional: non-JSON messages are silently ignored ──────────────────────
@@ -335,13 +335,13 @@ describe("createWsClient", () => {
     const ws = latestInstance();
 
     const handler = vi.fn();
-    client.onEvent(handler);
+    client!.onEvent(handler);
 
     ws.simulateOpen();
     ws.simulateRawMessage("this is not valid json {{{{");
 
     expect(handler).not.toHaveBeenCalled();
 
-    client.disconnect();
+    client!.disconnect();
   });
 });

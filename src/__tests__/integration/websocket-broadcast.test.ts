@@ -162,8 +162,8 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     const receivedByA: WsServerEvent[] = [];
     const receivedByB: WsServerEvent[] = [];
 
-    clientA.onEvent((event) => receivedByA.push(event));
-    clientB.onEvent((event) => receivedByB.push(event));
+    clientA!.onEvent((event) => receivedByA.push(event));
+    clientB!.onEvent((event) => receivedByB.push(event));
 
     // ── Arrange: mock fetch to relay broadcast to all connected clients ──────
     const broadcastFetch = createBroadcastFetch();
@@ -212,8 +212,8 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     expect(broadcastFetch).toHaveBeenCalledTimes(1);
 
     // ── Cleanup ──────────────────────────────────────────────────────────────
-    clientA.disconnect();
-    clientB.disconnect();
+    clientA!.disconnect();
+    clientB!.disconnect();
   });
 
   /**
@@ -233,10 +233,10 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     const receivedTimestamps: { client: string; receivedAt: number }[] = [];
     const publishedAt = Date.now();
 
-    clientA.onEvent(() => {
+    clientA!.onEvent(() => {
       receivedTimestamps.push({ client: "A", receivedAt: Date.now() });
     });
-    clientB.onEvent(() => {
+    clientB!.onEvent(() => {
       receivedTimestamps.push({ client: "B", receivedAt: Date.now() });
     });
 
@@ -267,8 +267,8 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
       ).toBeLessThan(2000);
     }
 
-    clientA.disconnect();
-    clientB.disconnect();
+    clientA!.disconnect();
+    clientB!.disconnect();
   });
 
   /**
@@ -290,11 +290,11 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     const receivedByA: WsServerEvent[] = [];
     const receivedByB: WsServerEvent[] = [];
 
-    clientA.onEvent((e) => receivedByA.push(e));
-    clientB.onEvent((e) => receivedByB.push(e));
+    clientA!.onEvent((e) => receivedByA.push(e));
+    clientB!.onEvent((e) => receivedByB.push(e));
 
     // Client B disconnects before the event is published
-    clientB.disconnect();
+    clientB!.disconnect();
 
     vi.stubGlobal("fetch", createBroadcastFetch());
 
@@ -317,7 +317,7 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     // broadcast relay skips it.
     expect(receivedByB).toHaveLength(0);
 
-    clientA.disconnect();
+    clientA!.disconnect();
   });
 
   /**
@@ -335,8 +335,8 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     const receivedByA: WsServerEvent[] = [];
     const receivedByB: WsServerEvent[] = [];
 
-    clientA.onEvent((e) => receivedByA.push(e));
-    clientB.onEvent((e) => receivedByB.push(e));
+    clientA!.onEvent((e) => receivedByA.push(e));
+    clientB!.onEvent((e) => receivedByB.push(e));
 
     vi.stubGlobal("fetch", createBroadcastFetch());
 
@@ -374,7 +374,7 @@ describe("WebSocket broadcast integration — Requirement 11.3", () => {
     expect(receivedByB[0].event).toBe("item_created");
     expect(receivedByB[1].event).toBe("item_updated");
 
-    clientA.disconnect();
-    clientB.disconnect();
+    clientA!.disconnect();
+    clientB!.disconnect();
   });
 });
