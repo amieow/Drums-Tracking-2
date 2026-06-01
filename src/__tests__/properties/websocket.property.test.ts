@@ -117,6 +117,8 @@ function makeThrowingFetch(error: Error) {
 describe("Property 19: WebSocket Events Published on Item Changes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("DAAS_WS_BROADCAST_URL", "https://daas.example.com/ws/broadcast");
+    vi.stubEnv("NEXT_PUBLIC_DAAS_URL", "https://daas.example.com");
   });
 
   afterEach(() => {
