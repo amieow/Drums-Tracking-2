@@ -116,6 +116,7 @@ function createBroadcastFetch() {
 beforeEach(() => {
   MockWebSocket.instances = [];
   vi.stubGlobal("WebSocket", MockWebSocket);
+  vi.stubEnv("NEXT_PUBLIC_DAAS_WS_URL", "wss://daas.example.com/ws");
   vi.useFakeTimers();
 });
 
