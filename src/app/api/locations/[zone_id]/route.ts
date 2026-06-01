@@ -14,7 +14,8 @@ import {
   successResponse,
 } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import { checkPermission } from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import {
   updateLocation,
   type UpdateLocationInput,

@@ -85,9 +85,15 @@ function isValidIsoDatetime(value: string): boolean {
  * current UTC date.
  */
 function isNotFutureDate(date: string): boolean {
-  const today = new Date();
-  // Compare only the date portion in UTC
-  const todayStr = today.toISOString().split("T")[0];
+  // UTC+7 (WIB) — Intl.DateTimeFormat with explicit timeZone ensures the
+  // server compares against the same calendar day as the client.
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const todayStr = formatter.format(new Date());
   return date <= todayStr;
 }
 

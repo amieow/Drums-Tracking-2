@@ -4,15 +4,16 @@
  * Usage:
  *   node scripts/seed-users.mjs
  *
- * Reads credentials from .env.local automatically.
+ * Reads DATABASE_URL from .env.local automatically.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import bcrypt from "bcryptjs";
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
+import postgres from "postgres";
 import { fileURLToPath } from "url";
 
-// ── Load .env.local manually (no dotenv dependency needed) ───────────────────
+// ── Load .env.local manually ─────────────────────────────────────────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = resolve(__dirname, "../.env.local");
 
@@ -39,14 +40,10 @@ function parseEnv(content) {
 }
 
 const env = parseEnv(envContent);
+const DATABASE_URL = env.DATABASE_URL;
 
-const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error(
-    "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local",
-  );
+if (!DATABASE_URL) {
+  console.error("Missing DATABASE_URL in .env.local");
   process.exit(1);
 }
 
@@ -63,31 +60,32 @@ const USERS = [
   { email: "ppic@drums.local", password: "Ppic1234!", role: "ppic" },
 ];
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const sql = postgres(DATABASE_URL, { ssl: { rejectUnauthorized: false } });
 
-console.log(`\nConnecting to: ${SUPABASE_URL}\n`);
+console.log(`\nConnecting to database...\n`);
 
 for (const user of USERS) {
   process.stdout.write(`Creating ${user.role.padEnd(8)} — ${user.email} ... `);
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: user.email,
-    password: user.password,
-    user_metadata: { role: user.role },
-    email_confirm: true,
-  });
-
-  if (error) {
-    if (error.message.toLowerCase().includes("already")) {
-      console.log("already exists, skipping.");
+  try {
+    const passwordHash = await bcrypt.hash(user.password, 12);
+    await sql`
+      INSERT INTO users (email, password_hash, role)
+      VALUES (${user.email}, ${passwordHash}, ${user.role})
+      ON CONFLICT (email) DO NOTHING
+    `;
+    // Check if it was actually inserted or skipped
+    const rows = await sql`SELECT id FROM users WHERE email = ${user.email}`;
+    if (rows.length > 0) {
+      console.log(`done (id: ${rows[0].id})`);
     } else {
-      console.log(`FAILED: ${error.message}`);
+      console.log("already exists, skipping.");
     }
-  } else {
-    console.log(`created (id: ${data.user.id})`);
+  } catch (err) {
+    console.log(`FAILED: ${err.message}`);
   }
 }
+
+await sql.end();
 
 console.log("\nDone. Login credentials:\n");
 console.table(

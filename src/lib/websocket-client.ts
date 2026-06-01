@@ -7,9 +7,6 @@
 
 import type { WsServerEvent } from "@/types/index";
 
-const FALLBACK_WS_URL =
-  "wss://73fe4e4b-9338-49dc-888b-965ba0f96a7f.daas3.buildpad.ai/ws";
-
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_INTERVAL_MS = 1000;
 
@@ -22,14 +19,21 @@ export interface WsClient {
 
 /**
  * Creates a WebSocket client that connects to the DaaS WebSocket server.
+ * Returns null if no WebSocket URL is configured.
  *
  * @param token - A valid JWT token used to authenticate the connection.
- * @returns A WsClient with `onEvent` and `disconnect` methods.
+ * @returns A WsClient with `onEvent` and `disconnect` methods, or null if disabled.
  */
-export function createWsClient(token: string): WsClient {
+export function createWsClient(token: string): WsClient | null {
   const baseUrl =
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DAAS_WS_URL) ||
-    FALLBACK_WS_URL;
+    typeof process !== "undefined"
+      ? (process.env.NEXT_PUBLIC_DAAS_WS_URL ?? "")
+      : "";
+
+  // No WebSocket URL configured — return a no-op client
+  if (!baseUrl) {
+    return null;
+  }
 
   // Ensure the base URL does not have a trailing slash before appending query
   const wsUrl = `${baseUrl.replace(/\/$/, "")}?token=${encodeURIComponent(token)}`;

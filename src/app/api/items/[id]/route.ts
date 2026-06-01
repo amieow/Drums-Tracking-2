@@ -14,7 +14,8 @@ import {
   successResponse,
 } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import { checkPermission } from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import { updateItemLocation } from "@/services/item-service";
 import type { AuditEntry, Item, ItemHistoryEntry, UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";

@@ -12,9 +12,20 @@ import {
   getHttpStatus,
   successResponse,
 } from "@/lib/api-response";
-import { checkPermission, writeForbiddenAttempt } from "@/lib/rbac";
+import {
+  ACTIONS,
+  checkPermission,
+  isTargetStatusAllowed,
+  STATUS_GROUPS_BY_PERMISSION,
+} from "@/lib/rbac";
+import { writeForbiddenAttempt } from "@/lib/audit";
 import { processScanBatch } from "@/services/item-service";
-import type { ScanBatchRequest, ScanBatchResponse, UserRole } from "@/types";
+import type {
+  ItemStatus,
+  ScanBatchRequest,
+  ScanBatchResponse,
+  UserRole,
+} from "@/types";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -27,6 +38,24 @@ function getClientIp(request: NextRequest): string {
     return forwarded.split(",")[0].trim();
   }
   return "unknown";
+}
+
+/**
+ * Derive the gating action for a (disallowed) target status, consistent with
+ * rbac's `STATUS_GROUPS_BY_PERMISSION` grouping:
+ *   `qc_pass` → `items:qc_pass`, `qc_fail` → `items:qc_fail`,
+ *   any other transition status → `items:update_status`.
+ *
+ * Used to record the offending action on a `forbidden_attempt` audit entry when
+ * a caller submits a `target_status` not permitted for their role.
+ */
+function getGatingActionForStatus(status: ItemStatus): string {
+  for (const group of STATUS_GROUPS_BY_PERMISSION) {
+    if (group.statuses.includes(status)) {
+      return group.permission;
+    }
+  }
+  return ACTIONS.ITEMS_UPDATE_STATUS;
 }
 
 /**
@@ -82,6 +111,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const batch = (body ?? {}) as ScanBatchRequest;
+
+  // ── 3b. Enforce role/status mapping — fail-closed before per-item processing ─
+  // The coarse `items:bulk_scan` check above only establishes that the caller may
+  // scan at all. Each item's `target_status` must additionally be permitted for
+  // the caller's role; otherwise the request is forged/stale relative to the UI.
+  // If ANY item carries a disallowed status, reject the whole batch with FORBIDDEN
+  // and do NOT apply any transition.
+  const items = Array.isArray(batch.items) ? batch.items : [];
+  const disallowedItem = items.find(
+    (item) => !isTargetStatusAllowed(userRole, item.target_status),
+  );
+  if (disallowedItem) {
+    void writeForbiddenAttempt({
+      userId,
+      userEmail: userEmail ?? "",
+      action: getGatingActionForStatus(disallowedItem.target_status),
+      ip: getClientIp(request),
+    });
+    return NextResponse.json(
+      errorResponse(
+        "FORBIDDEN",
+        "You do not have permission to apply one or more of the requested target statuses.",
+      ),
+      { status: getHttpStatus("FORBIDDEN") },
+    );
+  }
 
   // ── 4. Get client IP ───────────────────────────────────────────────────────
   const ip = getClientIp(request);

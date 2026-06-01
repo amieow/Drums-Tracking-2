@@ -1,20 +1,33 @@
 "use client";
 
-/**
- * Item Registration Page — `/register`
- *
- * Provides a form for operators to register a new drum into the system.
- * On successful submission the page displays the generated Lot ID and
- * an inline QR code image so the operator can immediately print the label.
- *
- * Requirements: 3.1, 3.7, 15.1, 15.2
- */
-
+import NavBar from "@/components/NavBar";
 import { useAuth } from "@/lib/auth-context";
 import type { ApiError, ApiSuccess, RegisterItemResponse } from "@/types";
 import { useState } from "react";
+import { CheckCircle2, Download, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+function todayIso(): string {
+  // UTC+7 (WIB) — extract calendar date by constructing the date directly
+  // from UTC+7 wall-clock components. JavaScript's Date(y,m,d) interprets
+  // arguments as local (UTC+7) time and converts to UTC internally, so
+  // midnight UTC+7 stays as its own calendar day regardless of the UTC date.
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = now.getMonth();
+  const dd = now.getDate();
+  // Asia/Jakarta is UTC+7 with no DST
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date(yyyy, mm, dd));
+}
 
 interface FormState {
   material_type: string;
@@ -28,211 +41,6 @@ interface FieldErrors {
   intake_date?: string;
   general?: string;
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Returns today's date as a YYYY-MM-DD string (local time). */
-function todayIso(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = {
-  page: {
-    minHeight: "100dvh",
-    backgroundColor: "#0f172a",
-    color: "#f1f5f9",
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    padding: "32px 20px 48px",
-  },
-  card: {
-    width: "100%",
-    maxWidth: 480,
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
-    padding: "28px 28px 32px",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-  },
-  heading: {
-    fontSize: 22,
-    fontWeight: 700,
-    margin: "0 0 6px",
-    letterSpacing: "-0.01em",
-  },
-  subheading: {
-    fontSize: 14,
-    color: "#94a3b8",
-    margin: "0 0 28px",
-  },
-  fieldGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    display: "block",
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#94a3b8",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginBottom: 6,
-  },
-  input: (hasError: boolean) => ({
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: 8,
-    border: `1px solid ${hasError ? "#ef4444" : "rgba(255,255,255,0.15)"}`,
-    backgroundColor: "#0f172a",
-    color: "#f1f5f9",
-    fontSize: 15,
-    outline: "none",
-    boxSizing: "border-box" as const,
-    transition: "border-color 0.15s",
-  }),
-  fieldError: {
-    marginTop: 5,
-    fontSize: 12,
-    color: "#f87171",
-  },
-  generalError: {
-    backgroundColor: "rgba(239,68,68,0.12)",
-    border: "1px solid rgba(239,68,68,0.4)",
-    borderRadius: 8,
-    padding: "10px 14px",
-    fontSize: 13,
-    color: "#fca5a5",
-    marginBottom: 20,
-  },
-  submitBtn: (loading: boolean) => ({
-    width: "100%",
-    padding: "12px 0",
-    borderRadius: 10,
-    border: "none",
-    backgroundColor: loading ? "#334155" : "#3b82f6",
-    color: loading ? "#64748b" : "#fff",
-    fontWeight: 700,
-    fontSize: 15,
-    cursor: loading ? "not-allowed" : "pointer",
-    transition: "background-color 0.15s",
-    marginTop: 8,
-  }),
-  // ── Success card ──────────────────────────────────────────────────────────
-  successCard: {
-    width: "100%",
-    maxWidth: 480,
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
-    padding: "28px 28px 32px",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-    textAlign: "center" as const,
-  },
-  successIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: "50%",
-    backgroundColor: "rgba(34,197,94,0.15)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto 16px",
-  },
-  successHeading: {
-    fontSize: 20,
-    fontWeight: 700,
-    margin: "0 0 6px",
-  },
-  successSub: {
-    fontSize: 14,
-    color: "#94a3b8",
-    margin: "0 0 24px",
-  },
-  lotIdBox: {
-    backgroundColor: "#0f172a",
-    borderRadius: 10,
-    padding: "14px 18px",
-    marginBottom: 24,
-    border: "1px solid rgba(255,255,255,0.08)",
-  },
-  lotIdLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.08em",
-    marginBottom: 4,
-  },
-  lotIdValue: {
-    fontSize: 26,
-    fontWeight: 700,
-    letterSpacing: "0.04em",
-    color: "#38bdf8",
-    fontVariantNumeric: "tabular-nums",
-  },
-  qrWrapper: {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 28,
-  },
-  qrLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-  },
-  qrImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    padding: 8,
-    display: "block",
-  },
-  registerAnotherBtn: {
-    width: "100%",
-    padding: "12px 0",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.15)",
-    backgroundColor: "transparent",
-    color: "#f1f5f9",
-    fontWeight: 600,
-    fontSize: 15,
-    cursor: "pointer",
-  },
-  metaRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 12,
-    color: "#64748b",
-    marginBottom: 20,
-    gap: 8,
-  },
-  metaItem: {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "flex-start" as const,
-    gap: 2,
-  },
-  metaLabel: {
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    fontSize: 10,
-  },
-  metaValue: {
-    color: "#cbd5e1",
-    fontSize: 13,
-    fontWeight: 500,
-  },
-} as const;
-
-// ─── Registration Form ────────────────────────────────────────────────────────
 
 interface RegistrationFormProps {
   token: string | null;
@@ -251,7 +59,6 @@ function RegistrationForm({ token, onSuccess }: RegistrationFormProps) {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-    // Clear field error on change
     if (errors[name as keyof FieldErrors]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
@@ -285,13 +92,11 @@ function RegistrationForm({ token, onSuccess }: RegistrationFormProps) {
         return;
       }
 
-      // Handle error response
       const apiError = json as ApiError;
       if (
         apiError.error.code === "VALIDATION_ERROR" &&
         apiError.error.details
       ) {
-        // Map field-level details to form errors
         const fieldErrors: FieldErrors = {};
         for (const [field, message] of Object.entries(apiError.error.details)) {
           fieldErrors[field as keyof FieldErrors] = message;
@@ -320,120 +125,142 @@ function RegistrationForm({ token, onSuccess }: RegistrationFormProps) {
   }
 
   return (
-    <div style={styles.card}>
-      <h1 style={styles.heading}>Register New Drum</h1>
-      <p style={styles.subheading}>
-        Enter the drum details to generate a Lot ID and QR code label.
-      </p>
+    <Card className="w-full max-w-md bg-slate-800 border-slate-700 shadow-xl">
+      <CardHeader className="pb-6">
+        <CardTitle className="text-slate-100 text-2xl font-bold tracking-tight">
+          Register New Drum
+        </CardTitle>
+        <p className="text-sm text-slate-400 mt-1">
+          Enter the drum details to generate a Lot ID and QR code label.
+        </p>
+      </CardHeader>
+      <CardContent className="px-8 pb-8">
+        {errors.general && (
+          <div
+            role="alert"
+            className="mb-5 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400"
+          >
+            {errors.general}
+          </div>
+        )}
 
-      {errors.general && (
-        <div role="alert" style={styles.generalError}>
-          {errors.general}
-        </div>
-      )}
-
-      <form
-        onSubmit={handleSubmit}
-        noValidate
-        aria-label="Item registration form"
-      >
-        {/* Material Type */}
-        <div style={styles.fieldGroup}>
-          <label htmlFor="material_type" style={styles.label}>
-            Material Type
-          </label>
-          <input
-            id="material_type"
-            name="material_type"
-            type="text"
-            value={form.material_type}
-            onChange={handleChange}
-            placeholder="e.g. Citrus Extract"
-            maxLength={100}
-            required
-            aria-required="true"
-            aria-describedby={
-              errors.material_type ? "material_type-error" : undefined
-            }
-            aria-invalid={!!errors.material_type}
-            style={styles.input(!!errors.material_type)}
-            autoComplete="off"
-          />
-          {errors.material_type && (
-            <p id="material_type-error" role="alert" style={styles.fieldError}>
-              {errors.material_type}
-            </p>
-          )}
-        </div>
-
-        {/* Supplier */}
-        <div style={styles.fieldGroup}>
-          <label htmlFor="supplier" style={styles.label}>
-            Supplier
-          </label>
-          <input
-            id="supplier"
-            name="supplier"
-            type="text"
-            value={form.supplier}
-            onChange={handleChange}
-            placeholder="e.g. PT Aroma Nusantara"
-            maxLength={100}
-            required
-            aria-required="true"
-            aria-describedby={errors.supplier ? "supplier-error" : undefined}
-            aria-invalid={!!errors.supplier}
-            style={styles.input(!!errors.supplier)}
-            autoComplete="off"
-          />
-          {errors.supplier && (
-            <p id="supplier-error" role="alert" style={styles.fieldError}>
-              {errors.supplier}
-            </p>
-          )}
-        </div>
-
-        {/* Intake Date */}
-        <div style={styles.fieldGroup}>
-          <label htmlFor="intake_date" style={styles.label}>
-            Intake Date
-          </label>
-          <input
-            id="intake_date"
-            name="intake_date"
-            type="date"
-            value={form.intake_date}
-            onChange={handleChange}
-            max={todayIso()}
-            required
-            aria-required="true"
-            aria-describedby={
-              errors.intake_date ? "intake_date-error" : undefined
-            }
-            aria-invalid={!!errors.intake_date}
-            style={styles.input(!!errors.intake_date)}
-          />
-          {errors.intake_date && (
-            <p id="intake_date-error" role="alert" style={styles.fieldError}>
-              {errors.intake_date}
-            </p>
-          )}
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          aria-busy={loading}
-          style={styles.submitBtn(loading)}
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          aria-label="Item registration form"
+          className="space-y-4"
         >
-          {loading ? "Registering…" : "Register Drum"}
-        </button>
-      </form>
-    </div>
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="material_type"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Material Type
+            </Label>
+            <Input
+              id="material_type"
+              name="material_type"
+              type="text"
+              value={form.material_type}
+              onChange={handleChange}
+              placeholder="e.g. Citrus Extract"
+              maxLength={100}
+              required
+              aria-required="true"
+              aria-describedby={
+                errors.material_type ? "material_type-error" : undefined
+              }
+              aria-invalid={!!errors.material_type}
+              className="bg-slate-900 border-slate-600 text-slate-100 placeholder:text-slate-500"
+            />
+            {errors.material_type && (
+              <p
+                id="material_type-error"
+                role="alert"
+                className="text-xs text-red-400 mt-1"
+              >
+                {errors.material_type}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="supplier"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Supplier
+            </Label>
+            <Input
+              id="supplier"
+              name="supplier"
+              type="text"
+              value={form.supplier}
+              onChange={handleChange}
+              placeholder="e.g. PT Aroma Nusantara"
+              maxLength={100}
+              required
+              aria-required="true"
+              aria-describedby={errors.supplier ? "supplier-error" : undefined}
+              aria-invalid={!!errors.supplier}
+              className="bg-slate-900 border-slate-600 text-slate-100 placeholder:text-slate-500"
+            />
+            {errors.supplier && (
+              <p
+                id="supplier-error"
+                role="alert"
+                className="text-xs text-red-400 mt-1"
+              >
+                {errors.supplier}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="intake_date"
+              className="text-xs font-semibold text-slate-400 uppercase tracking-wider"
+            >
+              Intake Date
+            </Label>
+            <Input
+              id="intake_date"
+              name="intake_date"
+              type="date"
+              value={form.intake_date}
+              onChange={handleChange}
+              max={todayIso()}
+              required
+              aria-required="true"
+              aria-describedby={
+                errors.intake_date ? "intake_date-error" : undefined
+              }
+              aria-invalid={!!errors.intake_date}
+              className="bg-slate-900 border-slate-600 text-slate-100"
+            />
+            {errors.intake_date && (
+              <p
+                id="intake_date-error"
+                role="alert"
+                className="text-xs text-red-400 mt-1"
+              >
+                {errors.intake_date}
+              </p>
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white font-bold disabled:bg-slate-600 disabled:text-slate-400"
+          >
+            {loading ? "Registering…" : "Register Drum"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
-
-// ─── Success View ─────────────────────────────────────────────────────────────
 
 interface SuccessViewProps {
   result: RegisterItemResponse;
@@ -441,99 +268,242 @@ interface SuccessViewProps {
 }
 
 function SuccessView({ result, onRegisterAnother }: SuccessViewProps) {
+  const [printed, setPrinted] = useState(false);
+
   const createdAt = new Date(result.created_at).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
 
+  const dateLabel = new Date(result.created_at).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  async function handleDownload() {
+    const res = await fetch(result.qr_code);
+    const blob = await res.blob();
+    const qrDataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+
+    const qrImg = new Image();
+    qrImg.src = qrDataUrl;
+    await new Promise<void>((resolve) => {
+      qrImg.onload = () => resolve();
+    });
+
+    const padding = 24;
+    const qrSize = 200;
+    const lotFontSize = 18;
+    const dateFontSize = 13;
+    const gap = 10;
+    const canvasWidth = qrSize + padding * 2;
+    const canvasHeight =
+      padding + qrSize + gap + lotFontSize + gap + dateFontSize + padding;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    ctx.drawImage(qrImg, padding, padding, qrSize, qrSize);
+
+    ctx.fillStyle = "#0f172a";
+    ctx.font = `800 ${lotFontSize}px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(
+      result.lot_id,
+      canvasWidth / 2,
+      padding + qrSize + gap + lotFontSize,
+    );
+
+    ctx.fillStyle = "#475569";
+    ctx.font = `500 ${dateFontSize}px system-ui, sans-serif`;
+    ctx.fillText(
+      dateLabel,
+      canvasWidth / 2,
+      padding + qrSize + gap + lotFontSize + gap + dateFontSize,
+    );
+
+    const link = document.createElement("a");
+    link.download = `${result.lot_id}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  async function handlePrint() {
+    const res = await fetch(result.qr_code);
+    const blob = await res.blob();
+    const qrDataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+
+    const printWindow = window.open("", "_blank", "width=400,height=500");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Label — ${result.lot_id}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              background: #fff;
+              font-family: system-ui, sans-serif;
+            }
+            .label {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 10px;
+              padding: 24px;
+              border: 1px solid #e2e8f0;
+              border-radius: 12px;
+              width: 260px;
+            }
+            img { width: 200px; height: 200px; display: block; }
+            .lot { font-family: monospace; font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: 0.06em; text-align: center; }
+            .date { font-size: 13px; color: #475569; font-weight: 500; text-align: center; }
+            @media print {
+              body { min-height: unset; }
+              .label { border: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="label">
+            <img src="${qrDataUrl}" alt="QR code for ${result.lot_id}" />
+            <div class="lot">${result.lot_id}</div>
+            <div class="date">${dateLabel}</div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); window.close(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setPrinted(true);
+  }
+
   return (
-    <div
-      style={styles.successCard}
+    <Card
+      className="w-full max-w-md bg-slate-800 border-slate-700 shadow-xl text-center"
       role="region"
       aria-label="Registration successful"
     >
-      {/* Success icon */}
-      <div style={styles.successIcon} aria-hidden="true">
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#22c55e"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <CardContent className="pt-8 pb-6 px-8">
+        <div
+          className="size-14 rounded-full bg-green-500/15 flex items-center justify-center mx-auto mb-4"
+          aria-hidden="true"
         >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </div>
-
-      <h1 style={styles.successHeading}>Drum Registered</h1>
-      <p style={styles.successSub}>
-        The drum has been assigned a unique Lot ID and is ready for labelling.
-      </p>
-
-      {/* Lot ID */}
-      <div style={styles.lotIdBox}>
-        <div style={styles.lotIdLabel}>Lot ID</div>
-        <div style={styles.lotIdValue} aria-label={`Lot ID: ${result.lot_id}`}>
-          {result.lot_id}
+          <CheckCircle2 className="size-7 text-green-500" />
         </div>
-      </div>
 
-      {/* Metadata row */}
-      <div style={styles.metaRow}>
-        <div style={styles.metaItem}>
-          <span style={styles.metaLabel}>Status</span>
-          <span style={styles.metaValue}>{result.current_status}</span>
-        </div>
-        <div style={styles.metaItem}>
-          <span style={styles.metaLabel}>Location</span>
-          <span style={styles.metaValue}>{result.location_zone}</span>
-        </div>
-        <div style={styles.metaItem}>
-          <span style={styles.metaLabel}>Registered</span>
-          <span style={styles.metaValue}>{createdAt}</span>
-        </div>
-      </div>
+        <h1 className="text-xl font-bold text-slate-100 mb-1.5">
+          Drum Registered
+        </h1>
+        <p className="text-sm text-slate-400 mb-6">
+          The drum has been assigned a unique Lot ID and is ready for labelling.
+        </p>
 
-      {/* QR Code image (Req 15.1, 15.2) */}
-      <div style={styles.qrWrapper}>
-        <span style={styles.qrLabel}>QR Code Label</span>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={result.qr_code}
-          alt={`QR code for drum ${result.lot_id}`}
-          style={styles.qrImage}
-          width={200}
-          height={200}
-        />
-        <a
-          href={result.qr_code}
-          download={`${result.lot_id}.png`}
-          style={{
-            fontSize: 13,
-            color: "#38bdf8",
-            textDecoration: "none",
-          }}
-          aria-label={`Download QR code for ${result.lot_id}`}
+        <div className="bg-slate-900 rounded-lg p-4 mb-4 border border-slate-700">
+          <div className="text-[11px] text-slate-500 uppercase tracking-widest mb-1">
+            Lot ID
+          </div>
+          <div
+            className="text-2xl font-bold font-mono text-sky-400 tracking-wider"
+            aria-label={`Lot ID: ${result.lot_id}`}
+          >
+            {result.lot_id}
+          </div>
+        </div>
+
+        <div className="flex justify-between text-xs text-slate-500 mb-6 gap-2">
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider">Status</span>
+            <span className="text-slate-300 font-medium">{result.current_status}</span>
+          </div>
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider">Location</span>
+            <span className="text-slate-300 font-medium">{result.location_zone}</span>
+          </div>
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="text-[10px] uppercase tracking-wider">Registered</span>
+            <span className="text-slate-300 font-medium">{createdAt}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-3 mb-6">
+          <span className="text-[12px] text-slate-500 uppercase tracking-wider">
+            QR Code Label
+          </span>
+
+          <div className="bg-white rounded-xl p-4 flex flex-col items-center gap-3 shadow-lg">
+            <img
+              src={result.qr_code}
+              alt={`QR code for drum ${result.lot_id}`}
+              className="size-48 rounded-lg"
+              width={200}
+              height={200}
+            />
+            <div className="font-mono font-extrabold text-slate-900 text-lg tracking-wider">
+              {result.lot_id}
+            </div>
+            <div className="text-xs text-slate-500 font-medium">
+              {new Date(result.created_at).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={() => void handleDownload()}
+            className="text-sm text-sky-400 hover:text-sky-300 underline bg-none border-none cursor-pointer p-0"
+            aria-label={`Download label for ${result.lot_id}`}
+          >
+            Download Label PNG
+          </button>
+        </div>
+
+        <Button
+          onClick={() => void handlePrint()}
+          className="w-full mb-3 bg-blue-700 hover:bg-blue-600 text-white font-bold border-blue-500"
+          aria-label={printed ? "Try print again" : "Print label"}
         >
-          Download PNG
-        </a>
-      </div>
+          <Printer className="size-4 mr-2" />
+          {printed ? "Try Print Again" : "Print Label"}
+        </Button>
 
-      <button
-        style={styles.registerAnotherBtn}
-        onClick={onRegisterAnother}
-        aria-label="Register another drum"
-      >
-        Register Another Drum
-      </button>
-    </div>
+        {printed && (
+          <Button
+            variant="outline"
+            onClick={onRegisterAnother}
+            className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
+          >
+            Register Another Drum
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
   const [result, setResult] = useState<RegisterItemResponse | null>(null);
@@ -548,15 +518,21 @@ export default function RegisterPage() {
   }
 
   return (
-    <main style={styles.page} aria-label="Item registration">
-      {result ? (
-        <SuccessView
-          result={result}
-          onRegisterAnother={handleRegisterAnother}
-        />
-      ) : (
-        <RegistrationForm token={token} onSuccess={handleSuccess} />
-      )}
+    <main
+      className="min-h-dvh bg-slate-900 text-slate-100 flex flex-col items-center px-5 py-8 pb-16"
+      aria-label="Item registration"
+    >
+      <NavBar title="Register Drum" />
+      <div className="mt-8 w-full max-w-md">
+        {result ? (
+          <SuccessView
+            result={result}
+            onRegisterAnother={handleRegisterAnother}
+          />
+        ) : (
+          <RegistrationForm token={token} onSuccess={handleSuccess} />
+        )}
+      </div>
     </main>
   );
 }

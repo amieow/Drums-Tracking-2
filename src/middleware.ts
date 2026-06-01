@@ -17,11 +17,19 @@ import { NextRequest, NextResponse } from "next/server";
 /** Routes that do not require authentication. */
 const PUBLIC_ROUTES = ["/api/auth/login", "/api/health", "/api/readiness"];
 
+/** Route prefixes that do not require authentication. */
+const PUBLIC_PREFIXES = ["/api/qr/"];
+
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Allow public routes through without authentication
   if (PUBLIC_ROUTES.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Allow public route prefixes (e.g. /api/qr/*)
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
